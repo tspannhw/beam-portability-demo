@@ -20,8 +20,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.example</groupId>
-  <artifactId>beam-examples-java8</artifactId>
+  <groupId>demo</groupId>
+  <artifactId>portability-demo</artifactId>
   <version>0.1</version>
 
   <packaging>jar</packaging>
@@ -30,9 +30,20 @@
     <beam.version>0.6.0-SNAPSHOT</beam.version>
   </properties>
 
-
-
   <repositories>
+<!-- Force snapshots to be local and not get overridden by new nightlies
+    <repository>
+      <id>apache.snapshots</id>
+      <name>Apache Development Snapshot Repository</name>
+      <url>https://repository.apache.org/content/repositories/snapshots/</url>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+-->
   </repositories>
 
   <build>
