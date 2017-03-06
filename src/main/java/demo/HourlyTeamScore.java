@@ -3,7 +3,6 @@ package demo;
 import java.io.OutputStream;
 import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
-import java.util.TimeZone;
 
 import org.apache.avro.reflect.Nullable;
 import org.apache.beam.sdk.Pipeline;
@@ -34,17 +33,20 @@ import org.apache.beam.sdk.util.IOChannelUtils;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.TypeDescriptors;
-import org.joda.time.DateTimeZone;
+import org.apache.beam.sdk.values.TypeDescriptors;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
+import org.joda.time.LocalDateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.annotations.VisibleForTesting;
 
+import static org.apache.beam.sdk.values.TypeDescriptors.kvs;
+import static org.apache.beam.sdk.values.TypeDescriptors.integers;
+import static org.apache.beam.sdk.values.TypeDescriptors.strings;
 
 /**
  * 
@@ -52,7 +54,6 @@ import com.google.common.annotations.VisibleForTesting;
 public class HourlyTeamScore {
 
   static final Duration ONE_HOUR = Duration.standardMinutes(60);
-
 
   public interface Options extends PipelineOptions {
 
@@ -69,11 +70,7 @@ public class HourlyTeamScore {
     void setOutputPrefix(String value);
   }
   
-  
-
-  /**
-   * Class to hold info about a game event.
-   */
+  /** Class to hold info about a game event. */
   @DefaultCoder(AvroCoder.class)
   static class GameActionInfo {
     @Nullable String user;
@@ -104,29 +101,34 @@ public class HourlyTeamScore {
     }
   }
   
-  public static class WriteWindowedFilesDoFn
+  /** DoFn to create file per window. */
+  public static class WriteWindowedFilesFn
 	  extends DoFn<KV<IntervalWindow, Iterable<KV<String, Integer>>>, Void> {
 	
-    final byte[] NEWLINE = "\n".getBytes(StandardCharsets.UTF_8);
+	private static final long serialVersionUID = 1L;
+	final byte[] NEWLINE = "\n".getBytes(StandardCharsets.UTF_8);
 	final Coder<String> STRING_CODER = StringUtf8Coder.of();
 	
 	private static DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
 	
-	private final String output;
+	String output;
 	
-	public WriteWindowedFilesDoFn(String output) {
+	public WriteWindowedFilesFn(String output) {
 	  this.output = output;
 	}
 	
 	public String fileForWindow(String output, ProcessContext context) {
 	  IntervalWindow window = context.element().getKey();
-	  String fileName = String.format(
-	      "%s-%s-%s", output, formatter.print(window.start()), formatter.print(window.end()));
 	  
-	  if (context.pane().getTiming().equals(PaneInfo.Timing.EARLY)) {
-		  fileName += String.format("_early-%s", formatter.print(context.timestamp()));
-	  } else if (context.pane().getTiming().equals(PaneInfo.Timing.LATE)) {
-		  fileName += String.format("_late-%s", formatter.print(context.timestamp()));
+	  String fileName = String.format(
+	     "%s-%s-%s-%s", output, (new LocalDateTime(window.start())).dayOfWeek().getAsShortText(), 
+	     formatter.print(window.start()), formatter.print(window.end()));
+	  
+	  PaneInfo.Timing timing = context.pane().getTiming();
+	  if (timing.equals(PaneInfo.Timing.EARLY)) {
+		  fileName += String.format("_early-%s", formatter.print(System.currentTimeMillis()));
+	  } else if (timing.equals(PaneInfo.Timing.LATE)) {
+		  fileName += String.format("_late-%s", formatter.print(System.currentTimeMillis()));
 	  }
 	  
 	  return fileName;
@@ -150,46 +152,22 @@ public class HourlyTeamScore {
 	}
   }
 
-  public static class ExtractAndSumScore
-		extends PTransform<PCollection<GameActionInfo>, PCollection<Void>> {
-		
-	String filepath;
-	
-	ExtractAndSumScore(String filepath) {
-		this.filepath = filepath;
-	}
-	
-	@Override
-	public PCollection<Void> expand(PCollection<GameActionInfo> gameInfo) {
-	
-	  return gameInfo
-	    .apply(MapElements
-	        .via((GameActionInfo gInfo) -> KV.of(gInfo.getTeam(), gInfo.getScore()))
-	        .withOutputType(
-	            TypeDescriptors.kvs(TypeDescriptors.strings(), TypeDescriptors.integers())))
-	    .apply(Sum.<String>integersPerKey())
-		.apply(ParDo.of(new DoFn<KV<String, Integer>, KV<IntervalWindow, KV<String, Integer>>>() {
-		                  @ProcessElement
-		                  public void processElement(ProcessContext context, IntervalWindow window) {
-		                    context.output(KV.of(window, context.element()));
-		                  }
-		                }))
-        .apply(GroupByKey.<IntervalWindow, KV<String, Integer>>create())
-        .apply(ParDo.of(new WriteWindowedFilesDoFn(filepath)));
-	}
+  /** DoFn that keys the element by the window. */
+  public static class KeyByWindowFn 
+  	  extends DoFn<KV<String, Integer>, KV<IntervalWindow, KV<String, Integer>>> {
+	private static final long serialVersionUID = 1L;
+
+	@ProcessElement
+    public void processElement(ProcessContext context, IntervalWindow window) {
+      context.output(KV.of(window, context.element()));
+	}	
   }
-
-
-  /**
-   * Parses the raw game event info into GameActionInfo objects. Each event line has the following
-   * format: username,teamname,score,timestamp_in_ms,readable_time
-   * e.g.:
-   * user2_AsparagusPig,AsparagusPig,10,1445230923951,2015-11-02 09:09:28.224
-   * The human-readable time string is not used here.
-   */
+  
+  /** DoFn to parse raw log lines into structured GameActionInfos. */
   static class ParseEventFn extends DoFn<String, GameActionInfo> {
 
-    // Log and count parse errors.
+	private static final long serialVersionUID = 1L;
+	// Log and count parse errors.
     private static final Logger LOG = LoggerFactory.getLogger(ParseEventFn.class);
     private final Aggregator<Long, Long> numParseErrors =
         createAggregator("ParseErrors", Sum.ofLongs());
@@ -211,17 +189,38 @@ public class HourlyTeamScore {
     }
   }
   
+  /** PTransform that takes a collection of GameActionInfo events and writes out the sum per team to files. */
+  @SuppressWarnings("serial")
+  public static class CalculateTeamScores
+		extends PTransform<PCollection<GameActionInfo>, PCollection<Void>> {
+		
+	String filepath;
+	
+	CalculateTeamScores(String filepath) {
+		this.filepath = filepath;
+	}
+	
+	@Override
+	public PCollection<Void> expand(PCollection<GameActionInfo> gameInfo) {
+	
+	  return gameInfo
+	    .apply(MapElements.via((GameActionInfo gInfo) -> KV.of(gInfo.getTeam(), gInfo.getScore()))
+	    		          .withOutputType(kvs(strings(), integers())))
+	    
+	    .apply(Sum.<String>integersPerKey())
+	    
+		.apply(ParDo.of(new KeyByWindowFn()))
+        .apply(GroupByKey.<IntervalWindow, KV<String, Integer>>create())
+        .apply(ParDo.of(new WriteWindowedFilesFn(filepath)));
+	}
+  }
   
-  /**
-   * Run a batch pipeline to do windowed analysis of the data.
-   */
+  /** Run a batch pipeline to do calculated windowed team scores over files. */
   public static void main(String[] args) throws Exception {
-    // Begin constructing a pipeline configured by commandline flags.
+	  
     Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
     Pipeline pipeline = Pipeline.create(options);
 
-
-    // Read 'gaming' events from a text file.
     pipeline
     	.apply(TextIO.Read.from(options.getInput()))
       	.apply("ParseGameEvent", ParDo.of(new ParseEventFn()))
@@ -229,7 +228,7 @@ public class HourlyTeamScore {
       
       	.apply("FixedWindows", Window.<GameActionInfo>into(FixedWindows.of(ONE_HOUR)))
 
-      	.apply("SumTeamScores", new ExtractAndSumScore(options.getOutputPrefix()));
+      	.apply("SumTeamScores", new CalculateTeamScores(options.getOutputPrefix()));
 
     pipeline.run();
   }

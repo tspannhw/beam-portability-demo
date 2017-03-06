@@ -66,9 +66,6 @@ public class LeaderBoard extends HourlyTeamScore {
   static final Duration TEN_MINUTES = Duration.standardMinutes(10);
 
 
-  /**
-   * Options supported by {@link LeaderBoard}.
-   */
   interface Options extends HourlyTeamScore.Options, StreamingOptions {
     @Description("Pub/Sub topic to read from")
     @Default.String("projects/cloud-dataflow-demo/topics/game-fjp")
@@ -79,7 +76,6 @@ public class LeaderBoard extends HourlyTeamScore {
   public static void main(String[] args) throws Exception {
 
     Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
-    // Enforce that this pipeline is always run in streaming mode.
     options.setStreaming(true);
     Pipeline pipeline = Pipeline.create(options);
 
@@ -98,8 +94,7 @@ public class LeaderBoard extends HourlyTeamScore {
 	        .withAllowedLateness(TEN_MINUTES)
 	        .accumulatingFiredPanes())
    		  
-         // Extract and sum teamname/score pairs from the event data.
-         .apply("ExtractTeamScore", new ExtractAndSumScore(options.getOutputPrefix()));
+         .apply("ExtractTeamScore", new CalculateTeamScores(options.getOutputPrefix()));
     
     pipeline.run();
   }
