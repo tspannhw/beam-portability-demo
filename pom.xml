@@ -28,6 +28,7 @@
 
   <properties>
     <beam.version>0.6.0-SNAPSHOT</beam.version>
+    <!-- <beam.version>0.5.0</beam.version> -->
   </properties>
 
   <repositories>
@@ -75,33 +76,6 @@
           </dependency>
         </dependencies>
       </plugin>
-      <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-shade-plugin</artifactId>
-          <version>2.4.1</version>
-          <executions>
-            <execution>
-              <phase>package</phase>
-              <goals>
-                <goal>shade</goal>
-              </goals>
-              <configuration>
-                <finalName>${project.artifactId}-bundled-${project.version}</finalName>
-                <filters>
-                  <filter>
-                    <artifact>*:*</artifact>
-                    <excludes>
-                      <exclude>META-INF/LICENSE</exclude>
-                      <exclude>META-INF/*.SF</exclude>
-                      <exclude>META-INF/*.DSA</exclude>
-                      <exclude>META-INF/*.RSA</exclude>
-                    </excludes>
-                  </filter>
-                </filters>
-              </configuration>
-            </execution>
-          </executions>
-        </plugin>
     </plugins>
 
     <pluginManagement>
@@ -192,9 +166,32 @@
       <build>
         <plugins>
           <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-shade-plugin</artifactId>
-          </plugin>
+	          <groupId>org.apache.maven.plugins</groupId>
+	          <artifactId>maven-shade-plugin</artifactId>
+	          <version>2.4.1</version>
+	          <executions>
+	            <execution>
+	              <phase>package</phase>
+	              <goals>
+	                <goal>shade</goal>
+	              </goals>
+	              <configuration>
+	                <finalName>${project.artifactId}-bundled-flink</finalName>
+	                <filters>
+	                  <filter>
+	                    <artifact>*:*</artifact>
+	                    <excludes>
+	                      <exclude>META-INF/LICENSE</exclude>
+	                      <exclude>META-INF/*.SF</exclude>
+	                      <exclude>META-INF/*.DSA</exclude>
+	                      <exclude>META-INF/*.RSA</exclude>
+	                    </excludes>
+	                  </filter>
+	                </filters>
+	              </configuration>
+	            </execution>
+	          </executions>
+        	</plugin>
         </plugins>
       </build>
     </profile>
@@ -229,6 +226,37 @@
           <scope>runtime</scope>
         </dependency>
       </dependencies>
+     <build>
+        <plugins>
+          <plugin>
+	          <groupId>org.apache.maven.plugins</groupId>
+	          <artifactId>maven-shade-plugin</artifactId>
+	          <version>2.4.1</version>
+	          <executions>
+	            <execution>
+	              <phase>package</phase>
+	              <goals>
+	                <goal>shade</goal>
+	              </goals>
+	              <configuration>
+	                <finalName>${project.artifactId}-bundled-spark</finalName>
+	                <filters>
+	                  <filter>
+	                    <artifact>*:*</artifact>
+	                    <excludes>
+	                      <exclude>META-INF/LICENSE</exclude>
+	                      <exclude>META-INF/*.SF</exclude>
+	                      <exclude>META-INF/*.DSA</exclude>
+	                      <exclude>META-INF/*.RSA</exclude>
+	                    </excludes>
+	                  </filter>
+	                </filters>
+	              </configuration>
+	            </execution>
+	          </executions>
+        	</plugin>
+        </plugins>
+      </build>
     </profile>
   </profiles>
 

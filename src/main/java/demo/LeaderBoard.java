@@ -1,36 +1,21 @@
 package demo;
 
-import com.google.common.annotations.VisibleForTesting;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.TimeZone;
-import org.apache.beam.examples.common.ExampleOptions;
-import org.apache.beam.examples.common.ExampleUtils;
-import org.apache.beam.examples.complete.game.utils.WriteToBigQuery;
-import org.apache.beam.examples.complete.game.utils.WriteWindowedToBigQuery;
+
 import org.apache.beam.sdk.Pipeline;
-import org.apache.beam.sdk.PipelineResult;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.PubsubIO;
 import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.StreamingOptions;
-import org.apache.beam.sdk.options.Validation;
-import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.windowing.AfterProcessingTime;
 import org.apache.beam.sdk.transforms.windowing.AfterWatermark;
 import org.apache.beam.sdk.transforms.windowing.FixedWindows;
-import org.apache.beam.sdk.transforms.windowing.GlobalWindows;
-import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
-import org.apache.beam.sdk.transforms.windowing.Repeatedly;
 import org.apache.beam.sdk.transforms.windowing.Window;
-import org.apache.beam.sdk.values.KV;
-import org.apache.beam.sdk.values.PCollection;
 import org.joda.time.DateTimeZone;
 import org.joda.time.Duration;
-import org.joda.time.Instant;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 
@@ -76,10 +61,7 @@ import org.joda.time.format.DateTimeFormatter;
 public class LeaderBoard extends HourlyTeamScore {
 
   private static final String TIMESTAMP_ATTRIBUTE = "timestamp_ms";
-
-  private static DateTimeFormatter fmt =
-      DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSS")
-          .withZone(DateTimeZone.forTimeZone(TimeZone.getTimeZone("PST")));
+  static final Duration TWO_MINUTES = Duration.standardMinutes(5);
   static final Duration FIVE_MINUTES = Duration.standardMinutes(5);
   static final Duration TEN_MINUTES = Duration.standardMinutes(10);
 
@@ -87,183 +69,41 @@ public class LeaderBoard extends HourlyTeamScore {
   /**
    * Options supported by {@link LeaderBoard}.
    */
-  interface Options extends HourlyTeamScore.Options, ExampleOptions, StreamingOptions {
-
+  interface Options extends HourlyTeamScore.Options, StreamingOptions {
     @Description("Pub/Sub topic to read from")
-    @Validation.Required
+    @Default.String("projects/cloud-dataflow-demo/topics/game-fjp")
     String getTopic();
     void setTopic(String value);
-
-    @Description("Numeric value of fixed window duration for team analysis, in minutes")
-    @Default.Integer(60)
-    Integer getTeamWindowDuration();
-    void setTeamWindowDuration(Integer value);
-
-    @Description("Numeric value of allowed data lateness, in minutes")
-    @Default.Integer(120)
-    Integer getAllowedLateness();
-    void setAllowedLateness(Integer value);
-
-    @Description("Prefix used for the BigQuery table names")
-    @Default.String("leaderboard")
-    String getLeaderBoardTableName();
-    void setLeaderBoardTableName(String value);
   }
-
-  /**
-   * Create a map of information that describes how to write pipeline output to BigQuery. This map
-   * is used to write team score sums and includes event timing information.
-   */
-  protected static Map<String, WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>>
-      configureWindowedTableWrite() {
-
-    Map<String, WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>> tableConfigure =
-        new HashMap<String, WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>>();
-    tableConfigure.put(
-        "team",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "STRING", (c, w) -> c.element().getKey()));
-    tableConfigure.put(
-        "total_score",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "INTEGER", (c, w) -> c.element().getValue()));
-    tableConfigure.put(
-        "window_start",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "STRING",
-            (c, w) -> {
-              IntervalWindow window = (IntervalWindow) w;
-              return fmt.print(window.start());
-            }));
-    tableConfigure.put(
-        "processing_time",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "STRING", (c, w) -> fmt.print(Instant.now())));
-    tableConfigure.put(
-        "timing",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "STRING", (c, w) -> c.pane().getTiming().toString()));
-    return tableConfigure;
-  }
-
-  /**
-   * Create a map of information that describes how to write pipeline output to BigQuery. This map
-   * is used to write user score sums.
-   */
-  protected static Map<String, WriteToBigQuery.FieldInfo<KV<String, Integer>>>
-      configureGlobalWindowBigQueryWrite() {
-
-    Map<String, WriteToBigQuery.FieldInfo<KV<String, Integer>>> tableConfigure =
-        configureBigQueryWrite();
-    tableConfigure.put(
-        "processing_time",
-        new WriteToBigQuery.FieldInfo<KV<String, Integer>>(
-            "STRING", (c, w) -> fmt.print(Instant.now())));
-    return tableConfigure;
-  }
-
 
   public static void main(String[] args) throws Exception {
 
     Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
     // Enforce that this pipeline is always run in streaming mode.
     options.setStreaming(true);
-    ExampleUtils exampleUtils = new ExampleUtils(options);
     Pipeline pipeline = Pipeline.create(options);
 
-    // Read game events from Pub/Sub using custom timestamps, which are extracted from the pubsub
-    // data elements, and parse the data.
-    PCollection<GameActionInfo> gameEvents = pipeline
-        .apply(PubsubIO.<String>read()
-            .timestampLabel(TIMESTAMP_ATTRIBUTE).topic(options.getTopic())
-            .withCoder(StringUtf8Coder.of()))
-        .apply("ParseGameEvent", ParDo.of(new ParseEventFn()));
+    pipeline
+	    .apply(PubsubIO.<String>read()
+	        .timestampLabel(TIMESTAMP_ATTRIBUTE).topic(options.getTopic())
+	        .withCoder(StringUtf8Coder.of()))
+	    .apply("ParseGameEvent", ParDo.of(new ParseEventFn()))
 
-    gameEvents.apply("CalculateTeamScores",
-        new CalculateTeamScores(
-            Duration.standardMinutes(options.getTeamWindowDuration()),
-            Duration.standardMinutes(options.getAllowedLateness())))
-        // Write the results to BigQuery.
-        .apply("WriteTeamScoreSums",
-               new WriteWindowedToBigQuery<KV<String, Integer>>(
-                  options.getLeaderBoardTableName() + "_team", configureWindowedTableWrite()));
-    gameEvents
-        .apply(
-            "CalculateUserScores",
-            new CalculateUserScores(Duration.standardMinutes(options.getAllowedLateness())))
-        // Write the results to BigQuery.
-        .apply(
-            "WriteUserScoreSums",
-            new WriteToBigQuery<KV<String, Integer>>(
-                options.getLeaderBoardTableName() + "_user", configureGlobalWindowBigQueryWrite()));
-
-    // Run the pipeline and wait for the pipeline to finish; capture cancellation requests from the
-    // command line.
-    PipelineResult result = pipeline.run();
-    exampleUtils.waitToFinish(result);
+    	.apply("FixedWindows", Window.<GameActionInfo>into(FixedWindows.of(FIVE_MINUTES))
+	        .triggering(AfterWatermark.pastEndOfWindow()
+	            .withEarlyFirings(AfterProcessingTime.pastFirstElementInPane()
+	                .plusDelayOf(TWO_MINUTES))
+	            .withLateFirings(AfterProcessingTime.pastFirstElementInPane()
+	                .plusDelayOf(FIVE_MINUTES)))
+	        .withAllowedLateness(TEN_MINUTES)
+	        .accumulatingFiredPanes())
+   		  
+         // Extract and sum teamname/score pairs from the event data.
+         .apply("ExtractTeamScore", new ExtractAndSumScore(options.getOutputPrefix()));
+    
+    pipeline.run();
   }
 
-  /**
-   * Calculates scores for each team within the configured window duration.
-   */
-  // [START DocInclude_WindowAndTrigger]
-  // Extract team/score pairs from the event stream, using hour-long windows by default.
-  @VisibleForTesting
-  static class CalculateTeamScores
-      extends PTransform<PCollection<GameActionInfo>, PCollection<KV<String, Integer>>> {
-    private final Duration teamWindowDuration;
-    private final Duration allowedLateness;
 
-    CalculateTeamScores(Duration teamWindowDuration, Duration allowedLateness) {
-      this.teamWindowDuration = teamWindowDuration;
-      this.allowedLateness = allowedLateness;
-    }
-
-    @Override
-    public PCollection<KV<String, Integer>> expand(PCollection<GameActionInfo> infos) {
-      return infos.apply("LeaderboardTeamFixedWindows",
-          Window.<GameActionInfo>into(FixedWindows.of(teamWindowDuration))
-              // We will get early (speculative) results as well as cumulative
-              // processing of late data.
-              .triggering(AfterWatermark.pastEndOfWindow()
-                  .withEarlyFirings(AfterProcessingTime.pastFirstElementInPane()
-                      .plusDelayOf(FIVE_MINUTES))
-                  .withLateFirings(AfterProcessingTime.pastFirstElementInPane()
-                      .plusDelayOf(TEN_MINUTES)))
-              .withAllowedLateness(allowedLateness)
-              .accumulatingFiredPanes())
-          // Extract and sum teamname/score pairs from the event data.
-          .apply("ExtractTeamScore", new ExtractAndSumScore("team"));
-    }
-  }
-  // [END DocInclude_WindowAndTrigger]
-
-  // [START DocInclude_ProcTimeTrigger]
-  /**
-   * Extract user/score pairs from the event stream using processing time, via global windowing.
-   * Get periodic updates on all users' running scores.
-   */
-  @VisibleForTesting
-  static class CalculateUserScores
-      extends PTransform<PCollection<GameActionInfo>, PCollection<KV<String, Integer>>> {
-    private final Duration allowedLateness;
-
-    CalculateUserScores(Duration allowedLateness) {
-      this.allowedLateness = allowedLateness;
-    }
-
-    @Override
-    public PCollection<KV<String, Integer>> expand(PCollection<GameActionInfo> input) {
-      return input.apply("LeaderboardUserGlobalWindow",
-          Window.<GameActionInfo>into(new GlobalWindows())
-              // Get periodic results every ten minutes.
-              .triggering(Repeatedly.forever(AfterProcessingTime.pastFirstElementInPane()
-                  .plusDelayOf(TEN_MINUTES)))
-              .accumulatingFiredPanes()
-              .withAllowedLateness(allowedLateness))
-          // Extract and sum username/score pairs from the event data.
-          .apply("ExtractUserScore", new ExtractAndSumScore("user"));
-    }
-  }
-  // [END DocInclude_ProcTimeTrigger]
+ 
 }

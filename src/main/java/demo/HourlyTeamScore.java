@@ -1,179 +1,236 @@
 package demo;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.OutputStream;
+import java.nio.channels.Channels;
+import java.nio.charset.StandardCharsets;
 import java.util.TimeZone;
-import org.apache.beam.examples.complete.game.utils.WriteWindowedToBigQuery;
+
+import org.apache.avro.reflect.Nullable;
 import org.apache.beam.sdk.Pipeline;
+import org.apache.beam.sdk.coders.AvroCoder;
+import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.coders.DefaultCoder;
+import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
+import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
-import org.apache.beam.sdk.transforms.Filter;
+import org.apache.beam.sdk.options.Validation;
+import org.apache.beam.sdk.transforms.Aggregator;
+import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.GroupByKey;
+import org.apache.beam.sdk.transforms.MapElements;
+import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
+import org.apache.beam.sdk.transforms.Sum;
 import org.apache.beam.sdk.transforms.WithTimestamps;
 import org.apache.beam.sdk.transforms.windowing.FixedWindows;
 import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
+import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.transforms.windowing.Window;
+import org.apache.beam.sdk.util.IOChannelFactory;
+import org.apache.beam.sdk.util.IOChannelUtils;
 import org.apache.beam.sdk.values.KV;
+import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.TypeDescriptors;
 import org.joda.time.DateTimeZone;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
+import org.joda.time.format.ISODateTimeFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.annotations.VisibleForTesting;
+
 
 /**
- * This class is the second in a series of four pipelines that tell a story in a 'gaming'
- * domain, following {@link UserScore}. In addition to the concepts introduced in {@link UserScore},
- * new concepts include: windowing and element timestamps; use of {@code Filter.by()}.
- *
- * <p>This pipeline processes data collected from gaming events in batch, building on {@link
- * UserScore} but using fixed windows. It calculates the sum of scores per team, for each window,
- * optionally allowing specification of two timestamps before and after which data is filtered out.
- * This allows a model where late data collected after the intended analysis window can be included,
- * and any late-arriving data prior to the beginning of the analysis window can be removed as well.
- * By using windowing and adding element timestamps, we can do finer-grained analysis than with the
- * {@link UserScore} pipeline. However, our batch processing is high-latency, in that we don't get
- * results from plays at the beginning of the batch's time period until the batch is processed.
- *
- * <p>To execute this pipeline using the Dataflow service, specify the pipeline configuration
- * like this:
- * <pre>{@code
- *   --project=YOUR_PROJECT_ID
- *   --tempLocation=gs://YOUR_TEMP_DIRECTORY
- *   --runner=BlockingDataflowRunner
- *   --dataset=YOUR-DATASET
- * }
- * </pre>
- * where the BigQuery dataset you specify must already exist.
- *
- * <p>Optionally include {@code --input} to specify the batch input file path.
- * To indicate a time after which the data should be filtered out, include the
- * {@code --stopMin} arg. E.g., {@code --stopMin=2015-10-18-23-59} indicates that any data
- * timestamped after 23:59 PST on 2015-10-18 should not be included in the analysis.
- * To indicate a time before which data should be filtered out, include the {@code --startMin} arg.
- * If you're using the default input specified in {@link UserScore},
- * "gs://apache-beam-samples/game/gaming_data*.csv", then
- * {@code --startMin=2015-11-16-16-10 --stopMin=2015-11-17-16-10} are good values.
+ * 
  */
-public class HourlyTeamScore extends UserScore {
+public class HourlyTeamScore {
 
-  private static DateTimeFormatter fmt =
-      DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSS")
-          .withZone(DateTimeZone.forTimeZone(TimeZone.getTimeZone("PST")));
-  private static DateTimeFormatter minFmt =
-      DateTimeFormat.forPattern("yyyy-MM-dd-HH-mm")
-          .withZone(DateTimeZone.forTimeZone(TimeZone.getTimeZone("PST")));
+  static final Duration ONE_HOUR = Duration.standardMinutes(60);
+
+
+  public interface Options extends PipelineOptions {
+
+    @Description("Path to the data file(s) containing game data.")
+    // The default maps to two large Google Cloud Storage files (each ~12GB) holding two subsequent
+    // day's worth (roughly) of data.
+    @Default.String("gs://apache-beam-samples/game/gaming_data*.csv")
+    String getInput();
+    void setInput(String value);
+    
+    @Description("Output file prefix")
+    @Validation.Required
+    String getOutputPrefix();
+    void setOutputPrefix(String value);
+  }
+  
+  
+
+  /**
+   * Class to hold info about a game event.
+   */
+  @DefaultCoder(AvroCoder.class)
+  static class GameActionInfo {
+    @Nullable String user;
+    @Nullable String team;
+    @Nullable Integer score;
+    @Nullable Long timestamp;
+
+    public GameActionInfo() {}
+
+    public GameActionInfo(String user, String team, Integer score, Long timestamp) {
+      this.user = user;
+      this.team = team;
+      this.score = score;
+      this.timestamp = timestamp;
+    }
+
+    public String getUser() {
+      return this.user;
+    }
+    public String getTeam() {
+      return this.team;
+    }
+    public Integer getScore() {
+      return this.score;
+    }
+    public Long getTimestamp() {
+      return this.timestamp;
+    }
+  }
+  
+  public static class WriteWindowedFilesDoFn
+	  extends DoFn<KV<IntervalWindow, Iterable<KV<String, Integer>>>, Void> {
+	
+    final byte[] NEWLINE = "\n".getBytes(StandardCharsets.UTF_8);
+	final Coder<String> STRING_CODER = StringUtf8Coder.of();
+	
+	private static DateTimeFormatter formatter = ISODateTimeFormat.hourMinute();
+	
+	private final String output;
+	
+	public WriteWindowedFilesDoFn(String output) {
+	  this.output = output;
+	}
+	
+	public String fileForWindow(String output, ProcessContext context) {
+	  IntervalWindow window = context.element().getKey();
+	  String fileName = String.format(
+	      "%s-%s-%s", output, formatter.print(window.start()), formatter.print(window.end()));
+	  
+	  if (context.pane().getTiming().equals(PaneInfo.Timing.EARLY)) {
+		  fileName += String.format("_early-%s", formatter.print(context.timestamp()));
+	  } else if (context.pane().getTiming().equals(PaneInfo.Timing.LATE)) {
+		  fileName += String.format("_late-%s", formatter.print(context.timestamp()));
+	  }
+	  
+	  return fileName;
+	}
+	
+	@ProcessElement
+	public void processElement(ProcessContext context) throws Exception {
+	  // Build a file name from the window
+	  
+	  String outputShard = fileForWindow(output, context);
+	
+	  // Open the file and write all the values
+	  IOChannelFactory factory = IOChannelUtils.getFactory(outputShard);
+	  OutputStream out = Channels.newOutputStream(factory.create(outputShard, "text/plain"));
+	  for (KV<String, Integer> wordCount : context.element().getValue()) {
+	    STRING_CODER.encode(
+	        wordCount.getKey() + ": " + wordCount.getValue(), out, Coder.Context.OUTER);
+	    out.write(NEWLINE);
+	  }
+	  out.close();
+	}
+  }
+
+  public static class ExtractAndSumScore
+		extends PTransform<PCollection<GameActionInfo>, PCollection<Void>> {
+		
+	String filepath;
+	
+	ExtractAndSumScore(String filepath) {
+		this.filepath = filepath;
+	}
+	
+	@Override
+	public PCollection<Void> expand(PCollection<GameActionInfo> gameInfo) {
+	
+	  return gameInfo
+	    .apply(MapElements
+	        .via((GameActionInfo gInfo) -> KV.of(gInfo.getTeam(), gInfo.getScore()))
+	        .withOutputType(
+	            TypeDescriptors.kvs(TypeDescriptors.strings(), TypeDescriptors.integers())))
+	    .apply(Sum.<String>integersPerKey())
+		.apply(ParDo.of(new DoFn<KV<String, Integer>, KV<IntervalWindow, KV<String, Integer>>>() {
+		                  @ProcessElement
+		                  public void processElement(ProcessContext context, IntervalWindow window) {
+		                    context.output(KV.of(window, context.element()));
+		                  }
+		                }))
+        .apply(GroupByKey.<IntervalWindow, KV<String, Integer>>create())
+        .apply(ParDo.of(new WriteWindowedFilesDoFn(filepath)));
+	}
+  }
 
 
   /**
-   * Options supported by {@link HourlyTeamScore}.
+   * Parses the raw game event info into GameActionInfo objects. Each event line has the following
+   * format: username,teamname,score,timestamp_in_ms,readable_time
+   * e.g.:
+   * user2_AsparagusPig,AsparagusPig,10,1445230923951,2015-11-02 09:09:28.224
+   * The human-readable time string is not used here.
    */
-  interface Options extends UserScore.Options {
+  static class ParseEventFn extends DoFn<String, GameActionInfo> {
 
-    @Description("Numeric value of fixed window duration, in minutes")
-    @Default.Integer(60)
-    Integer getWindowDuration();
-    void setWindowDuration(Integer value);
+    // Log and count parse errors.
+    private static final Logger LOG = LoggerFactory.getLogger(ParseEventFn.class);
+    private final Aggregator<Long, Long> numParseErrors =
+        createAggregator("ParseErrors", Sum.ofLongs());
 
-    @Description("String representation of the first minute after which to generate results,"
-        + "in the format: yyyy-MM-dd-HH-mm . This time should be in PST."
-        + "Any input data timestamped prior to that minute won't be included in the sums.")
-    @Default.String("1970-01-01-00-00")
-    String getStartMin();
-    void setStartMin(String value);
-
-    @Description("String representation of the first minute for which to not generate results,"
-        + "in the format: yyyy-MM-dd-HH-mm . This time should be in PST."
-        + "Any input data timestamped after that minute won't be included in the sums.")
-    @Default.String("2100-01-01-00-00")
-    String getStopMin();
-    void setStopMin(String value);
-
-    @Description("The BigQuery table name. Should not already exist.")
-    @Default.String("hourly_team_score")
-    String getHourlyTeamScoreTableName();
-    void setHourlyTeamScoreTableName(String value);
+    @ProcessElement
+    public void processElement(ProcessContext c) {
+      String[] components = c.element().split(",");
+      try {
+        String user = components[0].trim();
+        String team = components[1].trim();
+        Integer score = Integer.parseInt(components[2].trim());
+        Long timestamp = Long.parseLong(components[3].trim());
+        GameActionInfo gInfo = new GameActionInfo(user, team, score, timestamp);
+        c.output(gInfo);
+      } catch (ArrayIndexOutOfBoundsException | NumberFormatException e) {
+        numParseErrors.addValue(1L);
+        LOG.info("Parse error on " + c.element() + ", " + e.getMessage());
+      }
+    }
   }
-
-  /**
-   * Create a map of information that describes how to write pipeline output to BigQuery. This map
-   * is passed to the {@link WriteWindowedToBigQuery} constructor to write team score sums and
-   * includes information about window start time.
-   */
-  protected static Map<String, WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>>
-      configureWindowedTableWrite() {
-    Map<String, WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>> tableConfig =
-        new HashMap<String, WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>>();
-    tableConfig.put(
-        "team",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "STRING", (c, w) -> c.element().getKey()));
-    tableConfig.put(
-        "total_score",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "INTEGER", (c, w) -> c.element().getValue()));
-    tableConfig.put(
-        "window_start",
-        new WriteWindowedToBigQuery.FieldInfo<KV<String, Integer>>(
-            "STRING",
-            (c, w) -> {
-              IntervalWindow window = (IntervalWindow) w;
-              return fmt.print(window.start());
-            }));
-    return tableConfig;
-  }
-
-
+  
+  
   /**
    * Run a batch pipeline to do windowed analysis of the data.
    */
-  // [START DocInclude_HTSMain]
   public static void main(String[] args) throws Exception {
     // Begin constructing a pipeline configured by commandline flags.
     Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
     Pipeline pipeline = Pipeline.create(options);
 
-    final Instant stopMinTimestamp = new Instant(minFmt.parseMillis(options.getStopMin()));
-    final Instant startMinTimestamp = new Instant(minFmt.parseMillis(options.getStartMin()));
 
     // Read 'gaming' events from a text file.
-    pipeline.apply(TextIO.Read.from(options.getInput()))
-      // Parse the incoming data.
-      .apply("ParseGameEvent", ParDo.of(new ParseEventFn()))
+    pipeline
+    	.apply(TextIO.Read.from(options.getInput()))
+      	.apply("ParseGameEvent", ParDo.of(new ParseEventFn()))
+      	.apply("AddEventTimestamps", WithTimestamps.of((GameActionInfo i) -> new Instant(i.getTimestamp())))
+      
+      	.apply("FixedWindows", Window.<GameActionInfo>into(FixedWindows.of(ONE_HOUR)))
 
-      // Filter out data before and after the given times so that it is not included
-      // in the calculations. As we collect data in batches (say, by day), the batch for the day
-      // that we want to analyze could potentially include some late-arriving data from the previous
-      // day. If so, we want to weed it out. Similarly, if we include data from the following day
-      // (to scoop up late-arriving events from the day we're analyzing), we need to weed out events
-      // that fall after the time period we want to analyze.
-      // [START DocInclude_HTSFilters]
-      .apply("FilterStartTime", Filter.by(
-          (GameActionInfo gInfo)
-              -> gInfo.getTimestamp() > startMinTimestamp.getMillis()))
-      .apply("FilterEndTime", Filter.by(
-          (GameActionInfo gInfo)
-              -> gInfo.getTimestamp() < stopMinTimestamp.getMillis()))
-      // [END DocInclude_HTSFilters]
+      	.apply("SumTeamScores", new ExtractAndSumScore(options.getOutputPrefix()));
 
-      // [START DocInclude_HTSAddTsAndWindow]
-      // Add an element timestamp based on the event log, and apply fixed windowing.
-      .apply("AddEventTimestamps",
-             WithTimestamps.of((GameActionInfo i) -> new Instant(i.getTimestamp())))
-      .apply("FixedWindowsTeam", Window.<GameActionInfo>into(
-          FixedWindows.of(Duration.standardMinutes(options.getWindowDuration()))))
-      // [END DocInclude_HTSAddTsAndWindow]
-
-      // Extract and sum teamname/score pairs from the event data.
-      .apply("ExtractTeamScore", new ExtractAndSumScore("team"))
-      .apply("WriteTeamScoreSums",
-        new WriteWindowedToBigQuery<KV<String, Integer>>(options.getHourlyTeamScoreTableName(),
-            configureWindowedTableWrite()));
-
-
-    pipeline.run().waitUntilFinish();
+    pipeline.run();
   }
-  // [END DocInclude_HTSMain]
-
 }
