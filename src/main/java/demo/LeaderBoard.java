@@ -10,6 +10,7 @@ import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.StreamingOptions;
 import org.apache.beam.sdk.transforms.ParDo;
+import org.apache.beam.sdk.transforms.windowing.AfterPane;
 import org.apache.beam.sdk.transforms.windowing.AfterProcessingTime;
 import org.apache.beam.sdk.transforms.windowing.AfterWatermark;
 import org.apache.beam.sdk.transforms.windowing.FixedWindows;
@@ -68,7 +69,7 @@ public class LeaderBoard extends HourlyTeamScore {
 
   interface Options extends HourlyTeamScore.Options, StreamingOptions {
     @Description("Pub/Sub topic to read from")
-    @Default.String("projects/cloud-dataflow-demo/topics/game-fjp")
+    @Default.String("projects/apache-beam-demo/topics/game-fjp")
     String getTopic();
     void setTopic(String value);
   }
@@ -87,10 +88,7 @@ public class LeaderBoard extends HourlyTeamScore {
 
     	.apply("FixedWindows", Window.<GameActionInfo>into(FixedWindows.of(FIVE_MINUTES))
 	        .triggering(AfterWatermark.pastEndOfWindow()
-	            .withEarlyFirings(AfterProcessingTime.pastFirstElementInPane()
-	                .plusDelayOf(TWO_MINUTES))
-	            .withLateFirings(AfterProcessingTime.pastFirstElementInPane()
-	                .plusDelayOf(FIVE_MINUTES)))
+	            .withLateFirings(AfterPane.elementCountAtLeast(5)))
 	        .withAllowedLateness(TEN_MINUTES)
 	        .accumulatingFiredPanes())
    		  
