@@ -32,7 +32,7 @@
   </properties>
 
   <repositories>
-<!-- Force snapshots to be local and not get overridden by new nightlies
+<!-- Force snapshots to be local and not get overridden by new nightlies -->
     <repository>
       <id>apache.snapshots</id>
       <name>Apache Development Snapshot Repository</name>
@@ -44,7 +44,7 @@
         <enabled>true</enabled>
       </snapshots>
     </repository>
--->
+<!-- -->
   </repositories>
 
   <build>
