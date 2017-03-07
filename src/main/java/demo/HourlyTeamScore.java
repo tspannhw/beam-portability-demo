@@ -11,6 +11,8 @@ import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.DefaultCoder;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.TextIO;
+import org.apache.beam.sdk.metrics.Counter;
+import org.apache.beam.sdk.metrics.Metrics;
 import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptions;
@@ -171,6 +173,7 @@ public class HourlyTeamScore {
     private static final Logger LOG = LoggerFactory.getLogger(ParseEventFn.class);
     private final Aggregator<Long, Long> numParseErrors =
         createAggregator("ParseErrors", Sum.ofLongs());
+    private static final Counter numParseErrorsCounter = Metrics.counter(ParseEventFn.class, "ParseErrors");
 
     @ProcessElement
     public void processElement(ProcessContext c) {
@@ -184,8 +187,31 @@ public class HourlyTeamScore {
         c.output(gInfo);
       } catch (ArrayIndexOutOfBoundsException | NumberFormatException e) {
         numParseErrors.addValue(1L);
+        numParseErrorsCounter.inc();
         LOG.info("Parse error on " + c.element() + ", " + e.getMessage());
       }
+    }
+  }
+  
+  /** Extract and set the timestamps. */
+  static class SetTimestampsFn extends DoFn<GameActionInfo, GameActionInfo> {
+
+	private static final long serialVersionUID = 1L;
+	
+    @ProcessElement
+    public void processElement(ProcessContext c) {
+        c.outputWithTimestamp(c.element(), new Instant(c.element().getTimestamp()));
+    }
+  }
+  
+  /** Key by the team. */
+  static class KeyScoreByTeamFn extends DoFn<GameActionInfo, KV<String, Integer>> {
+
+	private static final long serialVersionUID = 1L;
+	
+    @ProcessElement
+    public void processElement(ProcessContext c) {
+        c.output(KV.of(c.element().getTeam(), c.element().getScore()));
     }
   }
   
@@ -204,8 +230,7 @@ public class HourlyTeamScore {
 	public PCollection<Void> expand(PCollection<GameActionInfo> gameInfo) {
 	
 	  return gameInfo
-	    .apply(MapElements.via((GameActionInfo gInfo) -> KV.of(gInfo.getTeam(), gInfo.getScore()))
-	    		          .withOutputType(kvs(strings(), integers())))
+	    .apply(ParDo.of(new KeyScoreByTeamFn()))
 	    
 	    .apply(Sum.<String>integersPerKey())
 	    
@@ -224,7 +249,7 @@ public class HourlyTeamScore {
     pipeline
     	.apply(TextIO.Read.from(options.getInput()))
       	.apply("ParseGameEvent", ParDo.of(new ParseEventFn()))
-      	.apply("AddEventTimestamps", WithTimestamps.of((GameActionInfo i) -> new Instant(i.getTimestamp())))
+      	.apply("SetTimestamps", ParDo.of(new SetTimestampsFn()))
       
       	.apply("FixedWindows", Window.<GameActionInfo>into(FixedWindows.of(ONE_HOUR)))
 
