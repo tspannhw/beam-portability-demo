@@ -62,7 +62,7 @@ import org.joda.time.format.DateTimeFormatter;
 public class LeaderBoard extends HourlyTeamScore {
 
   private static final String TIMESTAMP_ATTRIBUTE = "timestamp_ms";
-  static final Duration TWO_MINUTES = Duration.standardMinutes(5);
+  static final Duration TWO_MINUTES = Duration.standardMinutes(2);
   static final Duration FIVE_MINUTES = Duration.standardMinutes(5);
   static final Duration TEN_MINUTES = Duration.standardMinutes(10);
 

@@ -1,6 +1,7 @@
 package demo;
 
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 
@@ -10,6 +11,7 @@ import org.apache.beam.sdk.coders.AvroCoder;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.DefaultCoder;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
+import org.apache.beam.sdk.coders.SerializableCoder;
 import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.metrics.Counter;
 import org.apache.beam.sdk.metrics.Metrics;
@@ -26,10 +28,12 @@ import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.Sum;
 import org.apache.beam.sdk.transforms.WithTimestamps;
+import org.apache.beam.sdk.transforms.windowing.AfterPane;
 import org.apache.beam.sdk.transforms.windowing.AfterWatermark;
 import org.apache.beam.sdk.transforms.windowing.FixedWindows;
 import org.apache.beam.sdk.transforms.windowing.IntervalWindow;
 import org.apache.beam.sdk.transforms.windowing.PaneInfo;
+import org.apache.beam.sdk.transforms.windowing.Repeatedly;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.util.IOChannelFactory;
 import org.apache.beam.sdk.util.IOChannelUtils;
@@ -74,8 +78,9 @@ public class HourlyTeamScore {
   }
   
   /** Class to hold info about a game event. */
-  @DefaultCoder(AvroCoder.class)
-  static class GameActionInfo {
+  //TODO@DefaultCoder(AvroCoder.class)
+  @DefaultCoder(SerializableCoder.class)
+  static class GameActionInfo implements Serializable {
     @Nullable String user;
     @Nullable String team;
     @Nullable Integer score;
@@ -147,8 +152,9 @@ public class HourlyTeamScore {
 	  IOChannelFactory factory = IOChannelUtils.getFactory(outputShard);
 	  OutputStream out = Channels.newOutputStream(factory.create(outputShard, "text/plain"));
 	  for (KV<String, Integer> wordCount : context.element().getValue()) {
-	    STRING_CODER.encode(
-	        wordCount.getKey() + ": " + wordCount.getValue(), out, Coder.Context.OUTER);
+		String line = wordCount.getKey() + ": " + wordCount.getValue();
+		 //TODOline += ": " + formatter.print(System.currentTimeMillis());
+	    STRING_CODER.encode(line, out, Coder.Context.OUTER);
 	    out.write(NEWLINE);
 	  }
 	  out.close();
@@ -236,6 +242,7 @@ public class HourlyTeamScore {
 	    .apply(Sum.<String>integersPerKey())
 	    
 		.apply(ParDo.of(new KeyByWindowFn()))
+		.apply(Window.<KV<IntervalWindow, KV<String, Integer>>>into(FixedWindows.of(Duration.standardMinutes(5))).triggering(Repeatedly.forever(AfterPane.elementCountAtLeast(1))))
         .apply(GroupByKey.<IntervalWindow, KV<String, Integer>>create())
         .apply(ParDo.of(new WriteWindowedFilesFn(filepath)));
 	}
