@@ -55,9 +55,7 @@ import static org.apache.beam.sdk.values.TypeDescriptors.kvs;
 import static org.apache.beam.sdk.values.TypeDescriptors.integers;
 import static org.apache.beam.sdk.values.TypeDescriptors.strings;
 
-/**
- * 
- */
+/** Compute team scores per hour. */
 public class HourlyTeamScore {
 
   static final Duration ONE_HOUR = Duration.standardMinutes(60);
@@ -78,10 +76,13 @@ public class HourlyTeamScore {
   }
   
   /** Class to hold info about a game event. */
-  //TODO@DefaultCoder(AvroCoder.class)
   @DefaultCoder(SerializableCoder.class)
   static class GameActionInfo implements Serializable {
-    @Nullable String user;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	@Nullable String user;
     @Nullable String team;
     @Nullable Integer score;
     @Nullable Long timestamp;
@@ -200,7 +201,7 @@ public class HourlyTeamScore {
     }
   }
   
-  /** Extract and set the timestamps. */
+  /** Extract and set the time stamps. */
   static class SetTimestampsFn extends DoFn<GameActionInfo, GameActionInfo> {
 
 	private static final long serialVersionUID = 1L;
@@ -222,8 +223,7 @@ public class HourlyTeamScore {
     }
   }
   
-  /** PTransform that takes a collection of GameActionInfo events and writes out the sum per team to files. */
-  @SuppressWarnings("serial")
+  /** Takes a collection of GameActionInfo events and writes the sums per team to files. */
   public static class CalculateTeamScores
 		extends PTransform<PCollection<GameActionInfo>, PCollection<Void>> {
 		
@@ -242,20 +242,20 @@ public class HourlyTeamScore {
 	    .apply(Sum.<String>integersPerKey())
 	    
 		.apply(ParDo.of(new KeyByWindowFn()))
-		.apply(Window.<KV<IntervalWindow, KV<String, Integer>>>into(FixedWindows.of(Duration.standardMinutes(5))).triggering(Repeatedly.forever(AfterPane.elementCountAtLeast(1))))
-        .apply(GroupByKey.<IntervalWindow, KV<String, Integer>>create())
+		.apply(GroupByKey.<IntervalWindow, KV<String, Integer>>create())
         .apply(ParDo.of(new WriteWindowedFilesFn(filepath)));
 	}
   }
   
-  /** Run a batch pipeline to do calculated windowed team scores over files. */
+  /** Run a batch pipeline to calculate hourly team scores. */
   public static void main(String[] args) throws Exception {
 	  
-    Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
+    Options options = 
+    		PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
     Pipeline pipeline = Pipeline.create(options);
 
     pipeline
-    	.apply(TextIO.Read.from(options.getInput()))
+      	.apply(TextIO.Read.from(options.getInput()))
       	.apply("ParseGameEvent", ParDo.of(new ParseEventFn()))
       	.apply("SetTimestamps", ParDo.of(new SetTimestampsFn()))
       

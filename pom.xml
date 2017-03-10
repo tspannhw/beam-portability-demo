@@ -27,12 +27,12 @@
   <packaging>jar</packaging>
 
   <properties>
-    <beam.version>0.7.0-SNAPSHOT</beam.version>
+    <beam.version>0.6.0</beam.version>
     <!-- <beam.version>0.5.0</beam.version> -->
   </properties>
 
   <repositories>
-<!-- Force snapshots to be local and not get overridden by new nightlies 
+<!-- Force snapshots to be local and not get overridden by new nightlies
     <repository>
       <id>apache.snapshots</id>
       <name>Apache Development Snapshot Repository</name>
@@ -43,8 +43,19 @@
       <snapshots>
         <enabled>true</enabled>
       </snapshots>
-    </repository>
-- -->
+    </repository> -->
+    <repository>
+            <id>repository.apache.org-staging</id>
+            <name>Apache Release Repository</name>
+            <url>https://repository.apache.org/content/groups/staging</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+<!-- -->
   </repositories>
 
   <build>

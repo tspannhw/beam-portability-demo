@@ -1,7 +1,5 @@
 package demo;
 
-import java.util.TimeZone;
-
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.PubsubIO;
@@ -15,10 +13,7 @@ import org.apache.beam.sdk.transforms.windowing.AfterProcessingTime;
 import org.apache.beam.sdk.transforms.windowing.AfterWatermark;
 import org.apache.beam.sdk.transforms.windowing.FixedWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
-import org.joda.time.DateTimeZone;
 import org.joda.time.Duration;
-import org.joda.time.format.DateTimeFormat;
-import org.joda.time.format.DateTimeFormatter;
 
 /**
  * This class is the third in a series of four pipelines that tell a story in a 'gaming' domain,
@@ -76,7 +71,8 @@ public class LeaderBoard extends HourlyTeamScore {
 
   public static void main(String[] args) throws Exception {
 
-    Options options = PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
+    Options options = 
+    		PipelineOptionsFactory.fromArgs(args).withValidation().as(Options.class);
     options.setStreaming(true);
     Pipeline pipeline = Pipeline.create(options);
 
@@ -86,9 +82,11 @@ public class LeaderBoard extends HourlyTeamScore {
 	        .withCoder(StringUtf8Coder.of()))
 	    .apply("ParseGameEvent", ParDo.of(new ParseEventFn()))
 
-    	.apply("FixedWindows", Window.<GameActionInfo>into(FixedWindows.of(FIVE_MINUTES))
-	        .triggering(AfterWatermark.pastEndOfWindow()
-	            .withLateFirings(AfterPane.elementCountAtLeast(5)))
+      	.apply("FixedWindows", Window.<GameActionInfo>into(FixedWindows.of(FIVE_MINUTES))
+	            .triggering(AfterWatermark.pastEndOfWindow()
+	        		.withEarlyFirings(AfterProcessingTime.pastFirstElementInPane()
+	        				.plusDelayOf(TWO_MINUTES))
+	                .withLateFirings(AfterPane.elementCountAtLeast(1)))
 	        .withAllowedLateness(TEN_MINUTES)
 	        .accumulatingFiredPanes())
    		  
