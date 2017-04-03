@@ -1,23 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    Licensed to the Apache Software Foundation (ASF) under one or more
-    contributor license agreements.  See the NOTICE file distributed with
-    this work for additional information regarding copyright ownership.
-    The ASF licenses this file to You under the Apache License, Version 2.0
-    (the "License"); you may not use this file except in compliance with
-    the License.  You may obtain a copy of the License at
+  Copyright 2017 The Project Authors, see separate AUTHORS file
 
-       http://www.apache.org/licenses/LICENSE-2.0
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
 
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>demo</groupId>
@@ -27,15 +26,13 @@
   <packaging>jar</packaging>
 
   <properties>
-    <beam.version>0.6.0</beam.version>
-    <!-- <beam.version>0.5.0</beam.version> -->
+   <beam.version>0.6.0</beam.version>
   </properties>
 
   <repositories>
-<!-- Force snapshots to be local and not get overridden by new nightlies
     <repository>
       <id>apache.snapshots</id>
-      <name>Apache Development Snapshot Repository</name>
+      <name>Apache Snapshot Repository</name>
       <url>https://repository.apache.org/content/repositories/snapshots/</url>
       <releases>
         <enabled>false</enabled>
@@ -43,19 +40,19 @@
       <snapshots>
         <enabled>true</enabled>
       </snapshots>
-    </repository> -->
+    </repository>
+
     <repository>
-            <id>repository.apache.org-staging</id>
-            <name>Apache Release Repository</name>
-            <url>https://repository.apache.org/content/groups/staging</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-<!-- -->
+      <id>apache.staging</id>
+      <name>Apache Staging Repository</name>
+      <url>https://repository.apache.org/content/groups/staging</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
   </repositories>
 
   <build>
@@ -87,6 +84,23 @@
           </dependency>
         </dependencies>
       </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.0.0</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>analyze-only</goal>
+            </goals>
+            <configuration>
+              <ignoreNonCompile>true</ignoreNonCompile>
+              <failOnWarning>true</failOnWarning>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
 
     <pluginManagement>
@@ -109,7 +123,6 @@
       <activation>
         <activeByDefault>true</activeByDefault>
       </activation>
-      <!-- Makes the DirectRunner available when running a pipeline. -->
       <dependencies>
         <dependency>
           <groupId>org.apache.beam</groupId>
@@ -122,7 +135,6 @@
 
     <profile>
       <id>apex-runner</id>
-      <!-- Makes the ApexRunner available when running a pipeline. -->
       <dependencies>
         <dependency>
           <groupId>org.apache.beam</groupId>
@@ -152,7 +164,6 @@
 
     <profile>
       <id>dataflow-runner</id>
-      <!-- Makes the DataflowRunner available when running a pipeline. -->
       <dependencies>
         <dependency>
           <groupId>org.apache.beam</groupId>
@@ -165,7 +176,6 @@
 
     <profile>
       <id>flink-runner</id>
-      <!-- Makes the FlinkRunner available when running a pipeline. -->
       <dependencies>
         <dependency>
           <groupId>org.apache.beam</groupId>
@@ -177,40 +187,39 @@
       <build>
         <plugins>
           <plugin>
-	          <groupId>org.apache.maven.plugins</groupId>
-	          <artifactId>maven-shade-plugin</artifactId>
-	          <version>2.4.1</version>
-	          <executions>
-	            <execution>
-	              <phase>package</phase>
-	              <goals>
-	                <goal>shade</goal>
-	              </goals>
-	              <configuration>
-	                <finalName>${project.artifactId}-bundled-flink</finalName>
-	                <filters>
-	                  <filter>
-	                    <artifact>*:*</artifact>
-	                    <excludes>
-	                      <exclude>META-INF/LICENSE</exclude>
-	                      <exclude>META-INF/*.SF</exclude>
-	                      <exclude>META-INF/*.DSA</exclude>
-	                      <exclude>META-INF/*.RSA</exclude>
-	                    </excludes>
-	                  </filter>
-	                </filters>
-	              </configuration>
-	            </execution>
-	          </executions>
-        	</plugin>
-        </plugins>
-      </build>
+           <groupId>org.apache.maven.plugins</groupId>
+           <artifactId>maven-shade-plugin</artifactId>
+           <version>2.4.1</version>
+           <executions>
+             <execution>
+               <phase>package</phase>
+               <goals>
+                 <goal>shade</goal>
+               </goals>
+               <configuration>
+                 <finalName>${project.artifactId}-bundled-flink</finalName>
+                 <filters>
+                   <filter>
+                     <artifact>*:*</artifact>
+                     <excludes>
+                       <exclude>META-INF/LICENSE</exclude>
+                       <exclude>META-INF/*.SF</exclude>
+                       <exclude>META-INF/*.DSA</exclude>
+                       <exclude>META-INF/*.RSA</exclude>
+                     </excludes>
+                   </filter>
+                 </filters>
+               </configuration>
+             </execution>
+           </executions>
+         </plugin>
+       </plugins>
+     </build>
     </profile>
 
     <profile>
       <id>spark-runner</id>
-      <!-- Makes the SparkRunner available when running a pipeline. Additionally,
-           overrides some Spark dependencies to Beam-compatible versions. -->
+      <!-- Overrides some Spark dependencies to Beam-compatible versions. -->
       <dependencies>
         <dependency>
           <groupId>org.apache.beam</groupId>
@@ -237,49 +246,47 @@
           <scope>runtime</scope>
         </dependency>
       </dependencies>
-     <build>
+      <build>
         <plugins>
           <plugin>
-	          <groupId>org.apache.maven.plugins</groupId>
-	          <artifactId>maven-shade-plugin</artifactId>
-	          <version>2.4.1</version>
-	          <executions>
-	            <execution>
-	              <phase>package</phase>
-	              <goals>
-	                <goal>shade</goal>
-	              </goals>
-	              <configuration>
-	                <finalName>${project.artifactId}-bundled-spark</finalName>
-	                <filters>
-	                  <filter>
-	                    <artifact>*:*</artifact>
-	                    <excludes>
-	                      <exclude>META-INF/LICENSE</exclude>
-	                      <exclude>META-INF/*.SF</exclude>
-	                      <exclude>META-INF/*.DSA</exclude>
-	                      <exclude>META-INF/*.RSA</exclude>
-	                    </excludes>
-	                  </filter>
-	                </filters>
-	              </configuration>
-	            </execution>
-	          </executions>
-        	</plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>2.4.1</version>
+            <executions>
+              <execution>
+                <phase>package</phase>
+                <goals>
+                  <goal>shade</goal>
+                </goals>
+                <configuration>
+                  <finalName>${project.artifactId}-bundled-spark</finalName>
+                  <filters>
+                    <filter>
+                      <artifact>*:*</artifact>
+                      <excludes>
+                        <exclude>META-INF/LICENSE</exclude>
+                        <exclude>META-INF/*.SF</exclude>
+                        <exclude>META-INF/*.DSA</exclude>
+                        <exclude>META-INF/*.RSA</exclude>
+                      </excludes>
+                    </filter>
+                  </filters>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
         </plugins>
       </build>
     </profile>
   </profiles>
 
   <dependencies>
-    <!-- Adds a dependency on a specific version of the Beam SDK. -->
     <dependency>
       <groupId>org.apache.beam</groupId>
       <artifactId>beam-sdks-java-core</artifactId>
       <version>${beam.version}</version>
     </dependency>
 
-    <!-- Adds a dependency on a specific version of the Beam Google Cloud Platform IO module. -->
     <dependency>
       <groupId>org.apache.beam</groupId>
       <artifactId>beam-sdks-java-io-google-cloud-platform</artifactId>
@@ -291,8 +298,6 @@
       <artifactId>google-api-client</artifactId>
       <version>1.22.0</version>
       <exclusions>
-        <!-- Exclude an old version of guava that is being pulled
-             in by a transitive dependency of google-api-client -->
         <exclusion>
           <groupId>com.google.guava</groupId>
           <artifactId>guava-jdk5</artifactId>
@@ -300,14 +305,11 @@
       </exclusions>
     </dependency>
 
-    <!-- Dependencies below this line are specific dependencies needed by the examples code. -->
     <dependency>
       <groupId>com.google.apis</groupId>
       <artifactId>google-api-services-bigquery</artifactId>
       <version>v2-rev295-1.22.0</version>
       <exclusions>
-        <!-- Exclude an old version of guava that is being pulled
-             in by a transitive dependency of google-api-client -->
         <exclusion>
           <groupId>com.google.guava</groupId>
           <artifactId>guava-jdk5</artifactId>
@@ -320,8 +322,6 @@
       <artifactId>google-http-client</artifactId>
       <version>1.22.0</version>
       <exclusions>
-        <!-- Exclude an old version of guava that is being pulled
-             in by a transitive dependency of google-api-client -->
         <exclusion>
           <groupId>com.google.guava</groupId>
           <artifactId>guava-jdk5</artifactId>
@@ -334,8 +334,6 @@
       <artifactId>google-api-services-pubsub</artifactId>
       <version>v1-rev10-1.22.0</version>
       <exclusions>
-        <!-- Exclude an old version of guava that is being pulled
-             in by a transitive dependency of google-api-client -->
         <exclusion>
           <groupId>com.google.guava</groupId>
           <artifactId>guava-jdk5</artifactId>
@@ -371,7 +369,7 @@
     </dependency>
 
     <!-- Hamcrest and JUnit are required dependencies of PAssert,
-         which is used in the main code of DebuggingWordCount example. -->
+    which is used in the main code of DebuggingWordCount example. -->
     <dependency>
       <groupId>org.hamcrest</groupId>
       <artifactId>hamcrest-all</artifactId>
