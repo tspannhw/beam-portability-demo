@@ -30,6 +30,9 @@
 
     <gcp.project-name>apache-beam-demo</gcp.project-name>
     <gcp.pubsub-topic>game-fjp</gcp.pubsub-topic>
+    <gcp.hourlyteamscore-input>gs://apache-beam-demo/data/gaming*</gcp.hourlyteamscore-input>
+    <gcp.hourlyteamscore-output>gs://apache-beam-demo-fjp/dataflow/hourly/scores</gcp.hourlyteamscore-output>
+    <gcp.leaderboard-output>gs://apache-beam-demo-fjp/dataflow/leader/scores</gcp.leaderboard-output>
   </properties>
 
   <repositories>
@@ -131,6 +134,37 @@
                   <argument>${gcp.project-name}</argument>
                   <argument>${gcp.pubsub-topic}</argument>
                   <argument>none</argument>
+                </arguments>
+              </configuration>
+            </execution>
+
+            <execution>
+              <id>HourlyTeamScore-Dataflow</id>
+              <goals>
+                <goal>java</goal>
+              </goals>
+              <configuration>
+                <mainClass>demo.HourlyTeamScore</mainClass>
+                <arguments>
+                  <argument>--runner=dataflow</argument>
+                  <argument>--project=${gcp.project-name}</argument>
+                  <argument>--input=${gcp.hourlyteamscore-input}</argument>
+                  <argument>--outputPrefix=${gcp.hourlyteamscore-output}</argument>
+                </arguments>
+              </configuration>
+            </execution>
+
+            <execution>
+              <id>LeaderBoard-Dataflow</id>
+              <goals>
+                <goal>java</goal>
+              </goals>
+              <configuration>
+                <mainClass>demo.LeaderBoard</mainClass>
+                <arguments>
+                  <argument>--runner=dataflow</argument>
+                  <argument>--project=${gcp.project-name}</argument>
+                  <argument>--outputPrefix=${gcp.leaderboard-output}</argument>
                 </arguments>
               </configuration>
             </execution>
