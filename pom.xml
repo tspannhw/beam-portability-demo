@@ -31,8 +31,8 @@
     <gcp.project-name>apache-beam-demo</gcp.project-name>
     <gcp.pubsub-topic>game-fjp</gcp.pubsub-topic>
     <gcp.hourlyteamscore-input>gs://apache-beam-demo/data/gaming*</gcp.hourlyteamscore-input>
-    <gcp.hourlyteamscore-output>gs://apache-beam-demo-fjp/dataflow/hourly/scores</gcp.hourlyteamscore-output>
-    <gcp.leaderboard-output>gs://apache-beam-demo-fjp/dataflow/leader/scores</gcp.leaderboard-output>
+    <gcp.hourlyteamscore-output>gs://apache-beam-demo-davor/dataflow/hourly/scores</gcp.hourlyteamscore-output>
+    <gcp.leaderboard-output>gs://apache-beam-demo-davor/dataflow/leader/scores</gcp.leaderboard-output>
   </properties>
 
   <repositories>
