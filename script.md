@@ -1,11 +1,10 @@
 ## Injector
 
-On a new "injector VM", install newest Maven, git, and OpenJDK 7.
+On a new "injector VM", install Maven (minimum 3.3.1), git, and OpenJDK 7.
 
-    git clone https://github.com/francesperry/portability-demo.git
+    git clone https://github.com/davorbonaci/beam-portability-demo.git
 
-Use `screen`.
-
+    screen
     mvn clean compile exec:java@injector
 
 Press `Ctrl-A`, `Ctrl-D` (later `screen -r` to resume).
@@ -42,19 +41,19 @@ Open the UI:
 Build the package and stage it in Google Cloud Storage:
 
     mvn clean package -Pflink-runner
-    gsutil cp ./target/portability-demo-bundled-flink.jar gs://apache-beam-demo-fjp/staging/
+    gsutil cp ./target/portability-demo-bundled-flink.jar gs://apache-beam-demo-davor/staging/
 
 On the Flink master VM:
 
     screen
     yarn application -list
-    gsutil cp gs://apache-beam-demo-fjp/staging/portability-demo-bundled-flink.jar .
+    gsutil cp gs://apache-beam-demo-davor/staging/portability-demo-bundled-flink.jar .
 
-    /usr/lib/flink/bin/flink run -yid application_1490674683453_0001 -c demo.LeaderBoard portability-demo-bundled-flink.jar --runner=flink --outputPrefix=gs://apache-beam-demo-fjp/flink/leader/scores
-    /usr/lib/flink/bin/flink run -yid application_1490674683453_0001 -c demo.HourlyTeamScore portability-demo-bundled-flink.jar --runner=flink --outputPrefix=gs://apache-beam-demo-fjp/flink/hourly/scores  --input=gs://apache-beam-demo/data/gaming*
+    /usr/lib/flink/bin/flink run -yid application_1490674683453_0001 -c demo.LeaderBoard portability-demo-bundled-flink.jar --runner=flink --outputPrefix=gs://apache-beam-demo-davor/flink/leader/scores
+    /usr/lib/flink/bin/flink run -yid application_1490674683453_0001 -c demo.HourlyTeamScore portability-demo-bundled-flink.jar --runner=flink --outputPrefix=gs://apache-beam-demo-davor/flink/hourly/scores  --input=gs://apache-beam-demo/data/gaming*
     /usr/lib/flink/bin/flink cancel -yid application_1488916342230_0001
 
-## HourlyTeamScore on an Apache Spark cluster in Google Cloud Dataproc
+## Apache Spark cluster in Google Cloud Dataproc
 
     mvn clean package -Pspark-runner
 
@@ -77,4 +76,4 @@ Open the UI:
 
 Submit the job to the cluster:
 
-    gcloud dataproc jobs submit spark --cluster gaming-spark --properties spark.default.parallelism=200 --class demo.HourlyTeamScore --jars ./target/portability-demo-bundled-spark.jar -- --runner=spark --outputPrefix=gs://apache-beam-demo-fjp/spark/hourly/scores --input=gs://apache-beam-demo/data/gaming*
+    gcloud dataproc jobs submit spark --cluster gaming-spark --properties spark.default.parallelism=200 --class demo.HourlyTeamScore --jars ./target/portability-demo-bundled-spark.jar -- --runner=spark --outputPrefix=gs://apache-beam-demo-davor/spark/hourly/scores --input=gs://apache-beam-demo/data/gaming*
