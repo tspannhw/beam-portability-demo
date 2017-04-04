@@ -3,6 +3,7 @@
 On a new "injector VM", install Maven (minimum 3.3.1), git, and OpenJDK 7.
 
     git clone https://github.com/davorbonaci/beam-portability-demo.git
+    cd beam-portability-demo
 
     screen
     mvn clean compile exec:java@injector
@@ -55,8 +56,6 @@ On the Flink master VM:
 
 ## Apache Spark cluster in Google Cloud Dataproc
 
-    mvn clean package -Pspark-runner
-
     gcloud dataproc clusters create gaming-spark --image-version=1.0 --zone=us-central1-f --num-workers=25 --worker-machine-type=n1-standard-8 --master-machine-type=n1-standard-8 --worker-boot-disk-size=100gb --master-boot-disk-size=100gb
 
 To view the Apache Spark UI, in another terminal:
@@ -75,5 +74,7 @@ Open the UI:
     http://gaming-spark-m:18080/
 
 Submit the job to the cluster:
+
+    mvn clean package -Pspark-runner
 
     gcloud dataproc jobs submit spark --cluster gaming-spark --properties spark.default.parallelism=200 --class demo.HourlyTeamScore --jars ./target/portability-demo-bundled-spark.jar -- --runner=spark --outputPrefix=gs://apache-beam-demo-davor/spark/hourly/scores --input=gs://apache-beam-demo/data/gaming*
